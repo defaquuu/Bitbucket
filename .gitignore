@@ -1,0 +1,23 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+*.lock.json
+*.dll
+*.exe
+*.pdb
+*.cache
+*.log
+
+## VS Code
+.vscode/
+.idea/
+
+## Test results
+TestResults/
+
+## Environment
+.env
+appsettings.Development.json
