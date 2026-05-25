@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система тестирования знаний</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; font-family: 'Segoe UI', sans-serif; }
+        .container { background: white; border-radius: 20px; padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin-top: 30px; }
+        .btn-custom { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; }
+        .btn-custom:hover { transform: scale(1.05); color: white; }
+        .status-badge { position: fixed; top: 20px; right: 20px; z-index: 1000; }
+        .question-card { background: #f8f9fa; border-radius: 15px; padding: 20px; margin-bottom: 20px; border-left: 5px solid #667eea; }
+    </style>
+</head>
+<body>
+    <div class="status-badge">
+        <div id="liveStatus" class="alert alert-success" style="display: none;"><span id="liveStatusText"></span></div>
+    </div>
+    <div class="container">
+        <div class="text-center mb-4">
+            <h1>📚 Система тестирования знаний</h1>
+            <p class="lead">Проверь свои знания по C#</p>
+            <hr>
+        </div>
+
+        <div id="startPanel" class="text-center">
+            <button id="startBtn" class="btn btn-custom btn-lg">▶ Начать тест</button>
+        </div>
+
+        <div id="sessionInfo" class="card mb-4" style="display: none;">
+            <div class="card-body">
+                <h5>📋 Текущая сессия</h5>
+                <p><strong>ID сессии:</strong> <span id="sessionId"></span></p>
+                <p><strong>Баллов:</strong> <span id="currentScore">0</span> / <span id="maxScore"></span></p>
+                <div class="progress"><div id="scoreProgress" class="progress-bar" style="width: 0%">0%</div></div>
+            </div>
+        </div>
+
+        <div id="questionsPanel" style="display: none;">
+            <div id="questionsContainer"></div>
+            <div class="text-center mt-4"><button id="completeBtn" class="btn btn-danger btn-lg">✅ Завершить тест</button></div>
+        </div>
+
+        <div id="resultPanel" class="card mt-4" style="display: none;">
+            <div class="card-header bg-primary text-white"><h4>📊 Результаты</h4></div>
+            <div class="card-body" id="resultContent"></div>
+        </div>
+
+        <div class="row mt-5">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white"><h5>📈 Аналитика</h5></div>
+                    <div class="card-body">
+                        <button id="analyticsBtn" class="btn btn-info">Загрузить аналитику</button>
+                        <div id="analyticsContent" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const API_BASE = 'http://localhost:5000/api/Test';
+        let currentSessionId = null;
+        let questions = [];
+
+        function showStatus(msg, type='success') {
+            let el = document.getElementById('liveStatusText');
+            let div = document.getElementById('liveStatus');
+            el.textContent = msg;
+            div.className = `alert alert-${type} status-badge`;
+            div.style.display = 'block';
+            setTimeout(()=>div.style.display='none', 3000);
+        }
+
+        async function startTest() {
+            try {
+                showStatus('⏳ Начинаем...', 'info');
+                let res = await fetch(`${API_BASE}/start`, {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({testId:1, userId:'3fa85f64-5717-4562-b3fc-2c963f66afa6'})
+                });
+                let data = await res.json();
+                currentSessionId = data.sessionId;
+                document.getElementById('sessionId').textContent = currentSessionId;
+                document.getElementById('maxScore').textContent = data.maxPossibleScore;
+                document.getElementById('sessionInfo').style.display = 'block';
+                document.getElementById('startPanel').style.display = 'none';
+                document.getElementById('questionsPanel').style.display = 'block';
+                await loadQuestions();
+                showStatus('✅ Тест начат!', 'success');
+            } catch(e) { showStatus('Ошибка: '+e.message, 'danger'); }
+        }
+
+        async function loadQuestions() {
+            let res = await fetch(`${API_BASE}/1`);
+            let test = await res.json();
+            questions = test.questions;
+            let container = document.getElementById('questionsContainer');
+            container.innerHTML = '';
+            questions.forEach((q,idx)=>{
+                let div = document.createElement('div');
+                div.className = 'question-card';
+                div.innerHTML = `<div class="question-text">${idx+1}. ${q.text}</div>`;
+                if(q.type===0) {
+                    q.answers.forEach(a=>{
+                        div.innerHTML += `<label class="d-block p-2 bg-white rounded mb-1"><input type="radio" name="q${q.id}" value="${a.id}"> ${a.text}</label>`;
+                    });
+                } else if(q.type===1) {
+                    q.answers.forEach(a=>{
+                        div.innerHTML += `<label class="d-block p-2 bg-white rounded mb-1"><input type="checkbox" name="q${q.id}" value="${a.id}"> ${a.text}</label>`;
+                    });
+                } else {
+                    div.innerHTML += `<input type="text" class="form-control" id="text-${q.id}" placeholder="Введите ответ">`;
+                }
+                container.appendChild(div);
+            });
+        }
+
+        async function submitAll() {
+            for(let q of questions) {
+                let answer = null;
+                if(q.type===0) {
+                    let selected = document.querySelector(`input[name="q${q.id}"]:checked`);
+                    if(selected) answer = selected.value;
+                } else if(q.type===1) {
+                    let selected = [...document.querySelectorAll(`input[name="q${q.id}"]:checked`)].map(cb=>parseInt(cb.value));
+                    if(selected.length) answer = JSON.stringify(selected);
+                } else {
+                    let val = document.getElementById(`text-${q.id}`).value;
+                    if(val) answer = val;
+                }
+                if(answer) {
+                    await fetch(`${API_BASE}/submit`, {
+                        method:'POST',
+                        headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({sessionId:currentSessionId, questionId:q.id, answer:answer})
+                    });
+                }
+            }
+        }
+
+        async function completeTest() {
+            try {
+                showStatus('⏳ Завершаем...', 'info');
+                await submitAll();
+                let res = await fetch(`${API_BASE}/complete/${currentSessionId}`, {method:'POST'});
+                let result = await res.json();
+                document.getElementById('questionsPanel').style.display = 'none';
+                document.getElementById('resultPanel').style.display = 'block';
+                document.getElementById('resultContent').innerHTML = `
+                    <h3 class="${result.isPassed?'text-success':'text-danger'}">${result.isPassed?'✅ СДАЛ':'❌ НЕ СДАЛ'}</h3>
+                    <p><strong>Баллы:</strong> ${result.score} / ${result.maxScore}</p>
+                    <p><strong>Процент:</strong> ${result.percentage.toFixed(1)}%</p>
+                    <p><strong>Время:</strong> ${result.timeSpentMinutes} мин.</p>
+                    <div class="progress"><div class="progress-bar bg-success" style="width: ${result.percentage}%">${result.percentage.toFixed(0)}%</div></div>
+                `;
+                showStatus(`🎉 Результат: ${result.score}/${result.maxScore}`, 'success');
+            } catch(e) { showStatus('Ошибка: '+e.message, 'danger'); }
+        }
+
+        async function loadAnalytics() {
+            let res = await fetch(`${API_BASE}/analytics/test/1`);
+            let data = await res.json();
+            document.getElementById('analyticsContent').innerHTML = `
+                <table class="table table-bordered">
+                    <tr><td>📊 Попыток:</td><td><strong>${data.totalAttempts}</strong></td></tr>
+                    <tr><td>✅ Завершено:</td><td><strong>${data.completedAttempts}</strong></td></tr>
+                    <tr><td>📈 Средний балл:</td><td><strong>${data.averageScore.toFixed(1)}%</strong></td></tr>
+                    <tr><td>🏆 Pass rate:</td><td><strong>${data.passRate}%</strong></td></tr>
+                </table>
+            `;
+        }
+
+        document.getElementById('startBtn').onclick = startTest;
+        document.getElementById('completeBtn').onclick = completeTest;
+        document.getElementById('analyticsBtn').onclick = loadAnalytics;
+    </script>
+</body>
+</html>
